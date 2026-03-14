@@ -2,9 +2,10 @@
 
 Auto-Sentinel is a Python MVC desktop application for WPA2 wireless security auditing with a modern PyQt6 GUI.
 
-It supports two runtime modes:
+It supports three runtime modes:
 
 - **macOS**: runs in **Mock Mode** with synthetic Wi-Fi data (for safe GUI testing).
+- **Windows**: runs in **Mock Mode** with synthetic Wi-Fi data (for safe GUI testing).
 - **Linux/Kali**: runs in **Hardware Mode** with `airmon-ng` and `airodump-ng` for passive scanning.
 
 ## Tech Stack
@@ -68,7 +69,55 @@ python main.py
 - Runtime should indicate `Mock Mode`.
 - `Target Scan` will show fake access points in the table.
 
-## 2) Run on Kali Linux (Hardware Mode) - Step by Step
+## 2) Run on Windows (Mock Mode) - Step by Step
+
+Windows is detected as unsupported hardware mode, so Auto-Sentinel runs in safe Mock Mode.
+
+### Step 1: Open PowerShell and go to project folder
+
+```powershell
+cd "C:\path\to\Auto-Sentinel"
+```
+
+### Step 2: Create and activate a virtual environment
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+If activation is blocked, run this once in PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Then activate again:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### Step 3: Install dependencies
+
+```powershell
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+```
+
+### Step 4: Start the app
+
+```powershell
+python main.py
+```
+
+### Step 5: Validate startup in GUI
+
+- Environment chip should show `Windows` (or your detected platform).
+- Runtime should indicate `Mock Mode`.
+- `Target Scan` will show fake access points in the table.
+
+## 3) Run on Kali Linux (Hardware Mode) - Step by Step
 
 Kali/Linux mode uses real wireless tools and interface operations.
 
@@ -131,7 +180,7 @@ sudo .venv/bin/python main.py
 4. Watch live results in the dashboard.
 5. Click **Analyze Results** for a summary.
 
-## 3) Stop and Cleanup
+## 4) Stop and Cleanup
 
 - Click **Stop Target Scan** before closing when possible.
 - Closing the app or pressing `Ctrl+C` triggers cleanup logic.
@@ -147,12 +196,12 @@ sudo iwconfig wlan0 mode managed
 
 Adjust `wlan0` and `wlan0mon` to your actual interface names.
 
-## 4) Logs and Output
+## 5) Logs and Output
 
 - Runtime logs: `logs/auto_sentinel.log`
 - Scan outputs (CSV): inside the `captures/scan_YYYYMMDD_HHMMSS/` folder
 
-## 5) Troubleshooting
+## 6) Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'PyQt6'`
 
@@ -181,7 +230,14 @@ sudo .venv/bin/python main.py
 - Confirm interface name is correct.
 - Ensure monitor mode was started successfully in console output.
 
-## 6) Important Safety Notice
+### PowerShell cannot run activation script
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+.\.venv\Scripts\Activate.ps1
+```
+
+## 7) Important Safety Notice
 
 Use Auto-Sentinel only on networks and systems you own or are explicitly authorized to assess.
 
