@@ -341,6 +341,70 @@ class WirelessAuditService:
         ]
         return "\n".join(lines)
 
+    def capture_handshake(
+        self,
+        interface: str,
+        target_bssid: str | None = None,
+        on_output: OutputCallback | None = None,
+    ) -> str:
+        """Runs a safe, threaded handshake-capture flow.
+
+        In mock mode this emits simulated success text. In hardware mode this
+        intentionally stays non-automated and returns a guarded notice.
+        """
+
+        normalized_interface = self._validated_interface(interface)
+        target = target_bssid.strip().upper() if target_bssid else "unspecified target"
+
+        if self.environment.mock_mode:
+            message = (
+                "Mock mode: simulated handshake capture started on "
+                f"{normalized_interface} for {target}."
+            )
+            self._emit(on_output, message)
+            return message
+
+        message = (
+            "Handshake capture automation is intentionally guarded in this build. "
+            f"Requested interface={normalized_interface}, target={target}."
+        )
+        self._logger.warning(message)
+        self._emit(on_output, message)
+        return message
+
+    def authorize_deauthentication(
+        self,
+        interface: str,
+        target_bssid: str | None,
+        packet_count: int,
+        on_output: OutputCallback | None = None,
+    ) -> str:
+        """Runs a safe deauth-authorization workflow with validation."""
+
+        normalized_interface = self._validated_interface(interface)
+        if not target_bssid:
+            raise BackendError("Target BSSID is required before authorizing deauthentication.")
+        if packet_count <= 0:
+            raise BackendError("Deauth packet count must be a positive integer.")
+
+        target = target_bssid.strip().upper()
+        if self.environment.mock_mode:
+            message = (
+                "Mock mode: deauthentication authorization simulated for "
+                f"{target} on {normalized_interface} with {packet_count} packets."
+            )
+            self._emit(on_output, message)
+            return message
+
+        message = (
+            "Deauthentication execution is intentionally non-automated in this build. "
+            f"Authorization request logged for target={target}, packets={packet_count}, "
+            f"interface={normalized_interface}."
+        )
+        self._logger.warning(message)
+        self._emit(on_output, message)
+        return message
+
     def deauth_capture_handshake(self, target_bssid: str | None = None) -> str:
         """Returns a guardrail message for intentionally omitted active attack flows."""
 
