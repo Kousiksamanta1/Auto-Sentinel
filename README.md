@@ -8,6 +8,17 @@ It supports three runtime modes:
 - **Windows**: runs in **Mock Mode** with synthetic Wi-Fi data (for safe GUI testing).
 - **Linux/Kali**: runs in **Hardware Mode** with `airmon-ng` and `airodump-ng` for passive scanning.
 
+## Latest Updates (March 14, 2026)
+
+- Fully implemented **Action Panel** with visible, high-contrast controls and improved spacing.
+- Added **Wireless Interface** and **Monitor Mode State** dropdowns (`wlan0`, `wlan1`, `wlan0mon`; `Managed`, `Monitor`).
+- Added **Operations** buttons: `Start Network Scan`, `Capture Handshake`, and `Parse Capture`.
+- Added **Deauthentication Authorization** subsection with `Target BSSID`, `Deauth Packets (count)`, and `Authorize Deauthentication`.
+- Connected all Action Panel operations to **QThread workers** to prevent GUI freezing.
+- Wired button interactions into telemetry so events stream to the **Embedded Console** with timestamps and to `logs/auto_sentinel.log`.
+- Kept **Mock Mode** fully functional for macOS/Windows by returning simulated success messages instead of hardware actions.
+- Kept active deauthentication execution intentionally guarded/non-automated in hardware mode.
+
 ## Tech Stack
 
 - Python 3.10+
@@ -67,7 +78,7 @@ python main.py
 
 - Environment chip should show `macOS`.
 - Runtime should indicate `Mock Mode`.
-- `Target Scan` will show fake access points in the table.
+- Click `Start Network Scan` to stream fake access points in the table.
 
 ## 2) Run on Windows (Mock Mode) - Step by Step
 
@@ -115,7 +126,7 @@ python main.py
 
 - Environment chip should show `Windows` (or your detected platform).
 - Runtime should indicate `Mock Mode`.
-- `Target Scan` will show fake access points in the table.
+- Click `Start Network Scan` to stream fake access points in the table.
 
 ## 3) Run on Kali Linux (Hardware Mode) - Step by Step
 
@@ -174,15 +185,15 @@ sudo .venv/bin/python main.py
 
 ### Step 8: Run a passive scan from the GUI
 
-1. Enter interface (example: `wlan0`).
-2. Click **Start Monitor Mode**.
-3. Click **Target Scan**.
+1. Select interface (example: `wlan0`) from **Wireless Interface**.
+2. Set **Monitor Mode State** to `Monitor` when needed.
+3. Click **Start Network Scan**.
 4. Watch live results in the dashboard.
-5. Click **Analyze Results** for a summary.
+5. Click **Parse Capture** for a summary.
 
 ## 4) Stop and Cleanup
 
-- Click **Stop Target Scan** before closing when possible.
+- If scanning is active, click **Stop Network Scan** (same button toggles state) before closing when possible.
 - Closing the app or pressing `Ctrl+C` triggers cleanup logic.
 - Cleanup attempts to restore interface state back to Managed Mode.
 
