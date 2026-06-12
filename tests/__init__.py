@@ -1,0 +1,1 @@
+"""Auto-Sentinel test suite."""

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import atexit
 import os
-from pathlib import Path
 import platform
 import shutil
 import signal
 import subprocess
 import sys
+from pathlib import Path
 
 from core.logging_config import configure_logging
 
@@ -70,13 +70,16 @@ def main() -> int:
 
     from core.controller import AppController
     from core.logic import WirelessAuditService
+    from core.version import __version__
     from ui.main_window import AutoSentinelWindow
-    from ui.styles import DARK_THEME_QSS
+    from ui.styles import LIGHT_THEME_QSS
 
     logger = configure_logging()
     app = QApplication(sys.argv)
     app.setApplicationName("Auto-Sentinel")
-    app.setStyleSheet(DARK_THEME_QSS)
+    app.setApplicationVersion(__version__)
+    app.setOrganizationName("Auto-Sentinel")
+    app.setStyleSheet(LIGHT_THEME_QSS)
 
     view = AutoSentinelWindow()
     service = WirelessAuditService()

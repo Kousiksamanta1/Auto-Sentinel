@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="650" viewBox="0 0 1120 650" role="img" aria-labelledby="title desc">
+  <title id="title">Auto-Sentinel application architecture</title>
+  <desc id="desc">A layered diagram showing the PyQt desktop interface, controller and workers, passive audit service, platform tools, capture files, logs, and reports.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#17324d" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#547084"/>
+    </marker>
+    <pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#dce6ec" stroke-width="0.7" opacity="0.45"/>
+    </pattern>
+  </defs>
+
+  <rect width="1120" height="650" rx="22" fill="#f7fafb"/>
+  <rect width="1120" height="650" rx="22" fill="url(#paper)"/>
+
+  <text x="52" y="58" font-family="Inter, Segoe UI, sans-serif" font-size="26" font-weight="700" fill="#173a55">Auto-Sentinel architecture</text>
+  <text x="52" y="86" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#607485">One desktop process, clear ownership, passive operations only</text>
+
+  <g filter="url(#shadow)">
+    <rect x="54" y="128" width="280" height="184" rx="16" fill="#ffffff" stroke="#9db9ca" stroke-width="1.5"/>
+    <rect x="54" y="128" width="280" height="42" rx="16" fill="#e8f4f8"/>
+    <path d="M54 154 Q54 170 70 170 H334 V154" fill="#e8f4f8"/>
+    <text x="76" y="156" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#1c5772">PyQt6 desktop view</text>
+    <text x="76" y="202" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Interface and output controls</text>
+    <text x="76" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Live network table and metrics</text>
+    <text x="76" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Analysis, console, report export</text>
+    <rect x="76" y="278" width="158" height="21" rx="10" fill="#fff1c7"/>
+    <text x="88" y="293" font-family="Inter, Segoe UI, sans-serif" font-size="11" font-weight="650" fill="#765212">Main thread: UI only</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="420" y="128" width="280" height="184" rx="16" fill="#ffffff" stroke="#94b7ae" stroke-width="1.5"/>
+    <rect x="420" y="128" width="280" height="42" rx="16" fill="#e8f6f1"/>
+    <path d="M420 154 Q420 170 436 170 H700 V154" fill="#e8f6f1"/>
+    <text x="442" y="156" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#276854">Controller and workers</text>
+    <text x="442" y="202" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Connects actions to backend tasks</text>
+    <text x="442" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Owns scan state and cleanup</text>
+    <text x="442" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">QThread polling and error routing</text>
+    <rect x="442" y="278" width="174" height="21" rx="10" fill="#dff3ea"/>
+    <text x="454" y="293" font-family="Inter, Segoe UI, sans-serif" font-size="11" font-weight="650" fill="#28614f">No blocking UI calls</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="786" y="128" width="280" height="184" rx="16" fill="#ffffff" stroke="#a9adc9" stroke-width="1.5"/>
+    <rect x="786" y="128" width="280" height="42" rx="16" fill="#f0eff9"/>
+    <path d="M786 154 Q786 170 802 170 H1066 V154" fill="#f0eff9"/>
+    <text x="808" y="156" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#4a4f82">Wireless audit service</text>
+    <text x="808" y="202" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Preflight and interface discovery</text>
+    <text x="808" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Subprocess and monitor lifecycle</text>
+    <text x="808" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">CSV parsing and report building</text>
+    <rect x="808" y="278" width="180" height="21" rx="10" fill="#eceafa"/>
+    <text x="820" y="293" font-family="Inter, Segoe UI, sans-serif" font-size="11" font-weight="650" fill="#50558b">Hardware boundary</text>
+  </g>
+
+  <line x1="334" y1="220" x2="414" y2="220" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="354" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="11" fill="#607485">signals</text>
+  <line x1="700" y1="220" x2="780" y2="220" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="720" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="11" fill="#607485">tasks</text>
+
+  <path d="M926 312 V365" fill="none" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M558 312 V365" fill="none" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="420" y="382" width="280" height="164" rx="16" fill="#ffffff" stroke="#b5c0c8" stroke-width="1.5"/>
+    <text x="442" y="415" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#354d5c">Local application data</text>
+    <line x1="442" y1="430" x2="676" y2="430" stroke="#d9e2e7"/>
+    <text x="442" y="460" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" fill="#365b6d">captures/.../autosentinel-01.csv</text>
+    <text x="442" y="488" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" fill="#365b6d">logs/auto_sentinel.log</text>
+    <text x="442" y="516" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" fill="#365b6d">user-selected-report.json</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="786" y="382" width="280" height="164" rx="16" fill="#ffffff" stroke="#c2aa8c" stroke-width="1.5"/>
+    <text x="808" y="415" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#725533">Platform adapters</text>
+    <line x1="808" y1="430" x2="1042" y2="430" stroke="#eadfce"/>
+    <text x="808" y="460" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Linux: iw, ip, airmon-ng</text>
+    <text x="808" y="488" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">Linux: airodump-ng CSV stream</text>
+    <text x="808" y="516" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#344e60">macOS / Windows: mock source</text>
+  </g>
+
+  <line x1="926" y1="382" x2="926" y2="318" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M786 464 H706" fill="none" stroke="#547084" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="720" y="451" font-family="Inter, Segoe UI, sans-serif" font-size="11" fill="#607485">CSV + logs</text>
+
+  <g transform="rotate(-1 175 491)">
+    <rect x="56" y="410" width="270" height="132" rx="7" fill="#fff8d9" stroke="#d8c77c"/>
+    <text x="76" y="440" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#66551f">Design note</text>
+    <text x="76" y="468" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#5c5a4f">Only the service layer knows how</text>
+    <text x="76" y="490" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#5c5a4f">to touch wireless tools. That keeps</text>
+    <text x="76" y="512" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#5c5a4f">mock mode and tests predictable.</text>
+  </g>
+
+  <text x="54" y="608" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#718391">Solid arrows show runtime calls. Stored files remain inspectable outside the application.</text>
+</svg>

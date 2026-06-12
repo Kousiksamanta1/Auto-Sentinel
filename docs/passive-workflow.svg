@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="540" viewBox="0 0 1120 540" role="img" aria-labelledby="title desc">
+  <title id="title">Auto-Sentinel passive scan workflow</title>
+  <desc id="desc">A workflow diagram from interface selection through preflight, passive scanning, CSV storage, analysis, report export, and interface restoration.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#17324d" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#577487"/>
+    </marker>
+  </defs>
+
+  <rect width="1120" height="540" rx="22" fill="#f7fafb"/>
+  <path d="M0 104 C190 82 320 126 500 102 S820 76 1120 108 V0 H0 Z" fill="#e9f5f6"/>
+  <text x="52" y="57" font-family="Inter, Segoe UI, sans-serif" font-size="26" font-weight="700" fill="#173a55">Passive scan workflow</text>
+  <text x="52" y="84" font-family="Inter, Segoe UI, sans-serif" font-size="14" fill="#607485">The application validates the setup before it changes an interface or starts collection.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="52" y="142" width="190" height="108" rx="15" fill="#ffffff" stroke="#9db9ca" stroke-width="1.5"/>
+    <circle cx="81" cy="170" r="15" fill="#1f7188"/>
+    <text x="76" y="176" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#ffffff">1</text>
+    <text x="106" y="175" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#24495f">Choose sensor</text>
+    <text x="72" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Discover or type interface</text>
+    <text x="72" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Select capture directory</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="294" y="142" width="190" height="108" rx="15" fill="#ffffff" stroke="#a7b99d" stroke-width="1.5"/>
+    <circle cx="323" cy="170" r="15" fill="#56804c"/>
+    <text x="318" y="176" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#ffffff">2</text>
+    <text x="348" y="175" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#365a39">Run preflight</text>
+    <text x="314" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Tools, root, interface</text>
+    <text x="314" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Writable output path</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="536" y="142" width="190" height="108" rx="15" fill="#ffffff" stroke="#b6a8c8" stroke-width="1.5"/>
+    <circle cx="565" cy="170" r="15" fill="#6a5c8b"/>
+    <text x="560" y="176" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#ffffff">3</text>
+    <text x="590" y="175" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#50436e">Start scan</text>
+    <text x="556" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Enable monitor if needed</text>
+    <text x="556" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Launch passive collector</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="778" y="142" width="190" height="108" rx="15" fill="#ffffff" stroke="#c5ad89" stroke-width="1.5"/>
+    <circle cx="807" cy="170" r="15" fill="#9a7137"/>
+    <text x="802" y="176" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#ffffff">4</text>
+    <text x="832" y="175" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#725629">Observe</text>
+    <text x="798" y="207" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Poll CSV every second</text>
+    <text x="798" y="229" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Refresh table and metrics</text>
+  </g>
+
+  <line x1="242" y1="196" x2="286" y2="196" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <line x1="484" y1="196" x2="528" y2="196" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <line x1="726" y1="196" x2="770" y2="196" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <path d="M389 250 V294 H147 V258" fill="none" stroke="#b1665a" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="214" y="286" font-family="Inter, Segoe UI, sans-serif" font-size="12" font-weight="650" fill="#9a5147">failed check: adjust setup and retry</text>
+
+  <g filter="url(#shadow)">
+    <rect x="52" y="346" width="324" height="116" rx="15" fill="#fff7f3" stroke="#d1a093" stroke-width="1.5"/>
+    <text x="74" y="378" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#804d43">Stop and restore</text>
+    <text x="74" y="407" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Terminate collector, then restore managed mode</text>
+    <text x="74" y="431" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Also runs after scanner failure or application exit</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="430" y="346" width="280" height="116" rx="15" fill="#f2f8fc" stroke="#9bbbd0" stroke-width="1.5"/>
+    <text x="452" y="378" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#315e78">Saved capture</text>
+    <text x="452" y="407" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12.5" fill="#365b6d">autosentinel-01.csv</text>
+    <text x="452" y="431" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Can be reopened later without hardware</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="764" y="346" width="304" height="116" rx="15" fill="#f1f8f4" stroke="#99bba7" stroke-width="1.5"/>
+    <text x="786" y="378" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#37664a">Analyze and export</text>
+    <text x="786" y="407" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Security mix, busy channels, strongest AP</text>
+    <text x="786" y="431" font-family="Inter, Segoe UI, sans-serif" font-size="13" fill="#4d6473">Write a portable JSON report</text>
+  </g>
+
+  <path d="M873 250 V314 H570 V338" fill="none" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <path d="M710 404 H756" fill="none" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <path d="M430 404 H384" fill="none" stroke="#577487" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="846" y="488" width="222" height="27" rx="13" fill="#fff1c7"/>
+  <text x="862" y="506" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" font-weight="650" fill="#765212">No active attack stage exists</text>
+</svg>

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-sentinel"
+version = "1.0.0"
+description = "Cross-platform passive wireless auditing dashboard with safe mock mode"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Auto-Sentinel contributors"},
+]
+keywords = ["wireless", "security", "audit", "wifi", "pyqt6"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+dependencies = [
+    "PyQt6>=6.7,<7",
+]
+
+[project.urls]
+Homepage = "https://github.com/Kousiksamanta1/Auto-Sentinel"
+Repository = "https://github.com/Kousiksamanta1/Auto-Sentinel.git"
+Issues = "https://github.com/Kousiksamanta1/Auto-Sentinel/issues"
+Changelog = "https://github.com/Kousiksamanta1/Auto-Sentinel/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "coverage[toml]>=7.6,<8",
+    "ruff>=0.8,<1",
+]
+
+[project.scripts]
+auto-sentinel = "main:main"
+
+[tool.setuptools]
+packages = ["core", "ui"]
+py-modules = ["main"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.coverage.run]
+branch = true
+source = ["core", "ui"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 70

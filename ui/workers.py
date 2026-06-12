@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
@@ -47,7 +47,7 @@ class PollingWorker(QObject):
     def run(self) -> None:
         """Starts the polling loop."""
 
-        while self._running:
+        while self._running and not QThread.currentThread().isInterruptionRequested():
             try:
                 self.snapshot.emit(self._poller())
             except Exception as exc:  # pylint: disable=broad-except

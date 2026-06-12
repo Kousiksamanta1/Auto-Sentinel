@@ -1,255 +1,246 @@
 # Auto-Sentinel
 
-Auto-Sentinel is a Python MVC desktop application for WPA2 wireless security auditing with a modern PyQt6 GUI.
+Auto-Sentinel is a production-ready Python desktop application for **passive**
+wireless discovery and security analysis. It combines a PyQt6 dashboard with
+`airmon-ng` and `airodump-ng` on Linux, while providing a fully functional mock
+runtime on macOS and Windows.
 
-It supports three runtime modes:
+## Features
 
-- **macOS**: runs in **Mock Mode** with synthetic Wi-Fi data (for safe GUI testing).
-- **Windows**: runs in **Mock Mode** with synthetic Wi-Fi data (for safe GUI testing).
-- **Linux/Kali**: runs in **Hardware Mode** with `airmon-ng` and `airodump-ng` for passive scanning.
+- Dynamic wireless-interface discovery with manual override
+- Structured preflight checks for tools, privileges, interface, and output path
+- Threaded scans and parsing so the GUI remains responsive
+- Live SSID, BSSID, channel, signal, and security telemetry
+- Configurable capture directory
+- Persistent airodump-compatible CSV output in mock and hardware modes
+- Loading and analysis of existing airodump-ng CSV captures
+- JSON report export
+- Rotating application logs
+- Managed-mode restoration after scans and during shutdown
+- Automated unit and offscreen GUI tests
+- Installable command-line entry point and GitHub Actions CI
 
-## Latest Updates (March 14, 2026)
+## Runtime Modes
 
-- Fully implemented **Action Panel** with visible, high-contrast controls and improved spacing.
-- Added **Wireless Interface** and **Monitor Mode State** dropdowns (`wlan0`, `wlan1`, `wlan0mon`; `Managed`, `Monitor`).
-- Added **Operations** buttons: `Start Network Scan`, `Capture Handshake`, and `Parse Capture`.
-- Added **Deauthentication Authorization** subsection with `Target BSSID`, `Deauth Packets (count)`, and `Authorize Deauthentication`.
-- Connected all Action Panel operations to **QThread workers** to prevent GUI freezing.
-- Wired button interactions into telemetry so events stream to the **Embedded Console** with timestamps and to `logs/auto_sentinel.log`.
-- Kept **Mock Mode** fully functional for macOS/Windows by returning simulated success messages instead of hardware actions.
-- Kept active deauthentication execution intentionally guarded/non-automated in hardware mode.
+| Platform | Mode | Behavior |
+| --- | --- | --- |
+| Linux/Kali | Hardware | Passive scanning through aircrack-ng tools |
+| macOS | Mock | Synthetic networks with real CSV/report workflows |
+| Windows | Mock | Synthetic networks with real CSV/report workflows |
 
-## Tech Stack
+Auto-Sentinel intentionally does not execute deauthentication or automate
+handshake attacks. Its supported scope is passive discovery, capture parsing,
+analysis, and reporting.
 
-- Python 3.10+
-- PyQt6
-- pandas
+## Requirements
+
+- Python 3.10 or newer
+- PyQt6 6.7 or newer
+- Linux hardware mode: `aircrack-ng`, `iproute2`, and a monitor-mode-capable
+  wireless adapter
+
+## How It Fits Together
+
+The desktop window stays focused on interaction while the controller owns
+threading and scan state. Platform commands and capture parsing remain inside
+the backend service.
+
+![Auto-Sentinel architecture](docs/architecture.svg)
+
+The scan path is deliberately linear: validate first, collect passively, then
+analyze or export the saved data.
+
+![Passive scan workflow](docs/passive-workflow.svg)
+
+## Quick Start
+
+```bash
+git clone https://github.com/Kousiksamanta1/Auto-Sentinel.git
+cd Auto-Sentinel
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+auto-sentinel
+```
+
+You can also run the source entry point:
+
+```bash
+python main.py
+```
+
+### Windows Activation
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+auto-sentinel
+```
+
+If PowerShell blocks activation:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+## Kali/Linux Setup
+
+Install the required system tools:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip aircrack-ng iproute2
+```
+
+Create the environment and install Auto-Sentinel:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Start hardware mode with the privileges required for monitor interfaces:
+
+```bash
+sudo .venv/bin/auto-sentinel
+```
+
+## Using the Application
+
+1. Click **Refresh Interfaces** or enter the interface name manually.
+2. Choose **Monitor** when Auto-Sentinel should enable monitor mode.
+3. Select a writable **Capture Directory**.
+4. Click **Run Preflight Checks** and resolve any failed required checks.
+5. Click **Start Network Scan**.
+6. Review live networks in the dashboard.
+7. Click **Analyze Current Results** for a security and channel summary.
+8. Click **Export JSON Report** to save the current dataset.
+9. Stop the scan before changing interface configuration.
+
+To analyze an existing capture, enter or select an airodump-ng `.csv` file and
+click **Load Capture CSV**.
+
+## Output
+
+Each scan creates:
+
+```text
+captures/
+└── scan_YYYYMMDD_HHMMSS_microseconds/
+    └── autosentinel-01.csv
+```
+
+Runtime logs are written to:
+
+```text
+logs/auto_sentinel.log
+```
+
+Exported JSON reports include generation time, analytical summary, and all
+displayed network records.
+
+## Development
+
+Install development tooling:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+Run all checks:
+
+```bash
+make check
+```
+
+Or run them separately:
+
+```bash
+ruff check .
+QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
+python -m coverage run -m unittest discover -s tests -v
+python -m coverage report
+```
 
 ## Project Layout
 
 ```text
 Auto-Sentinel/
 ├── main.py
-├── requirements.txt
+├── pyproject.toml
+├── docs/
+│   ├── architecture.svg
+│   └── passive-workflow.svg
 ├── core/
-│   ├── logic.py
 │   ├── controller.py
+│   ├── environment.py
+│   ├── logic.py
+│   ├── logging_config.py
 │   ├── models.py
 │   ├── parsers.py
-│   ├── environment.py
-│   └── logging_config.py
-└── ui/
-    ├── main_window.py
-    ├── workers.py
-    └── styles.py
+│   └── version.py
+├── ui/
+│   ├── main_window.py
+│   ├── styles.py
+│   └── workers.py
+└── tests/
 ```
 
-## 1) Run on macOS (Mock Mode) - Step by Step
+## Troubleshooting
 
-macOS is automatically detected and uses synthetic Wi-Fi scan data.
-
-### Step 1: Open Terminal and go to project folder
+### Preflight reports missing tools
 
 ```bash
-cd "/path/to/Auto-Sentinel"
+sudo apt install -y aircrack-ng iproute2
 ```
 
-### Step 2: Create and activate a virtual environment
+### No wireless interfaces are detected
+
+Confirm the adapter is visible and supports monitor mode:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### Step 3: Install dependencies
-
-```bash
-python -m pip install -U pip
-python -m pip install -r requirements.txt
-```
-
-### Step 4: Start the app
-
-```bash
-python main.py
-```
-
-### Step 5: Validate startup in GUI
-
-- Environment chip should show `macOS`.
-- Runtime should indicate `Mock Mode`.
-- Click `Start Network Scan` to stream fake access points in the table.
-
-## 2) Run on Windows (Mock Mode) - Step by Step
-
-Windows is detected as unsupported hardware mode, so Auto-Sentinel runs in safe Mock Mode.
-
-### Step 1: Open PowerShell and go to project folder
-
-```powershell
-cd "C:\path\to\Auto-Sentinel"
-```
-
-### Step 2: Create and activate a virtual environment
-
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-If activation is blocked, run this once in PowerShell:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Then activate again:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-### Step 3: Install dependencies
-
-```powershell
-python -m pip install -U pip
-python -m pip install -r requirements.txt
-```
-
-### Step 4: Start the app
-
-```powershell
-python main.py
-```
-
-### Step 5: Validate startup in GUI
-
-- Environment chip should show `Windows` (or your detected platform).
-- Runtime should indicate `Mock Mode`.
-- Click `Start Network Scan` to stream fake access points in the table.
-
-## 3) Run on Kali Linux (Hardware Mode) - Step by Step
-
-Kali/Linux mode uses real wireless tools and interface operations.
-
-### Step 1: Install system packages
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip aircrack-ng wireless-tools net-tools
-```
-
-### Step 2: Open project folder
-
-```bash
-cd "/path/to/Auto-Sentinel"
-```
-
-### Step 3: Create and activate a virtual environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### Step 4: Install Python dependencies
-
-```bash
-python -m pip install -U pip
-python -m pip install -r requirements.txt
-```
-
-### Step 5: Verify wireless CLI tools are available
-
-```bash
-command -v airmon-ng
-command -v airodump-ng
-command -v aireplay-ng
-```
-
-### Step 6: Find your wireless interface
-
-```bash
+iw dev
 ip link
 ```
 
-Use names like `wlan0` in the GUI.
+The interface field remains editable for adapters not reported by discovery.
 
-### Step 7: Start the app
+### Permission failure
 
-Hardware mode usually needs elevated privileges for monitor operations:
+Hardware scans generally require elevated privileges:
 
 ```bash
-sudo .venv/bin/python main.py
+sudo .venv/bin/auto-sentinel
 ```
 
-### Step 8: Run a passive scan from the GUI
+### Interface remains in monitor mode
 
-1. Select interface (example: `wlan0`) from **Wireless Interface**.
-2. Set **Monitor Mode State** to `Monitor` when needed.
-3. Click **Start Network Scan**.
-4. Watch live results in the dashboard.
-5. Click **Parse Capture** for a summary.
-
-## 4) Stop and Cleanup
-
-- If scanning is active, click **Stop Network Scan** (same button toggles state) before closing when possible.
-- Closing the app or pressing `Ctrl+C` triggers cleanup logic.
-- Cleanup attempts to restore interface state back to Managed Mode.
-
-If needed, manual recovery on Kali:
+Auto-Sentinel restores interfaces it changed itself. Manual recovery:
 
 ```bash
 sudo airmon-ng stop wlan0mon
 sudo ip link set wlan0 up
-sudo iwconfig wlan0 mode managed
 ```
 
-Adjust `wlan0` and `wlan0mon` to your actual interface names.
+Adjust names for your adapter.
 
-## 5) Logs and Output
+### Qt fails to start on macOS from an iCloud folder
 
-- Runtime logs: `logs/auto_sentinel.log`
-- Scan outputs (CSV): inside the `captures/scan_YYYYMMDD_HHMMSS/` folder
+The entry point automatically copies Qt plugins to a temporary local directory.
+Always launch through `python main.py` or the `auto-sentinel` command so this
+bootstrap runs.
 
-## 6) Troubleshooting
+## Safety and Authorization
 
-### `ModuleNotFoundError: No module named 'PyQt6'`
+Use Auto-Sentinel only on networks and systems you own or are explicitly
+authorized to assess. Passive collection can still expose sensitive network
+metadata; protect capture files and reports accordingly.
 
-```bash
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
+## License
 
-### `airmon-ng not found`
-
-```bash
-sudo apt install -y aircrack-ng
-```
-
-### Permission denied while enabling monitor mode
-
-Run with elevated privileges:
-
-```bash
-sudo .venv/bin/python main.py
-```
-
-### Empty scan table in Kali
-
-- Ensure adapter supports monitor mode.
-- Confirm interface name is correct.
-- Ensure monitor mode was started successfully in console output.
-
-### PowerShell cannot run activation script
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-.\.venv\Scripts\Activate.ps1
-```
-
-## 7) Important Safety Notice
-
-Use Auto-Sentinel only on networks and systems you own or are explicitly authorized to assess.
-
-This build focuses on passive discovery and analysis workflows. Active deauthentication and automated handshake-capture actions are intentionally not implemented.
+MIT. See [LICENSE](LICENSE).

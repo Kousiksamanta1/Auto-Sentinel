@@ -2,25 +2,33 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime, timezone
+import csv
+import json
+import os
 import random
 import re
 import shutil
 import subprocess
+from collections import Counter
+from collections.abc import Callable, Sequence
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Callable, Sequence
-
-import pandas as pd
 
 from core.environment import detect_environment
 from core.logging_config import get_logger
-from core.models import NetworkRecord, RuntimeEnvironment, ScanSession
+from core.models import (
+    NetworkRecord,
+    PreflightCheck,
+    PreflightReport,
+    RuntimeEnvironment,
+    ScanSession,
+)
 from core.parsers import AirodumpCsvParser
 
-
 OutputCallback = Callable[[str], None]
+INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
 
 
 class BackendError(RuntimeError):
@@ -31,7 +39,6 @@ class MockWifiDataSource:
     """Generates realistic synthetic Wi-Fi data for GUI testing."""
 
     def __init__(self) -> None:
-        self._logger = get_logger("mock")
         self._random = random.Random(1337)
         self._templates: list[dict[str, str | int]] = [
             {
@@ -95,7 +102,6 @@ class MockWifiDataSource:
                 )
             )
 
-        self._random.shuffle(records)
         return sorted(records, key=lambda record: record.signal_dbm, reverse=True)
 
 
@@ -114,51 +120,152 @@ class WirelessAuditService:
         self._process_lock = Lock()
         self._scan_process: subprocess.Popen[str] | None = None
         self._scan_session: ScanSession | None = None
+        self._mock_scan_active = False
         self._base_interface = ""
         self._monitor_interface = ""
+        self._monitor_started_by_app = False
+        self._expected_scan_stop = False
 
     @property
     def scan_active(self) -> bool:
-        """Returns whether a passive scan subprocess is active."""
+        """Returns whether a passive scan is active."""
 
+        if self.environment.mock_mode:
+            return self._mock_scan_active
         return self._scan_process is not None and self._scan_process.poll() is None
 
-    @property
-    def monitor_interface(self) -> str:
-        """Returns the active monitor interface if known."""
+    def discover_interfaces(self) -> list[str]:
+        """Discovers wireless interfaces available to the current runtime."""
 
-        return self._monitor_interface
+        if self.environment.mock_mode:
+            return ["wlan0", "wlan1"]
 
-    @property
-    def current_session(self) -> ScanSession | None:
-        """Returns the active or most recent scan session."""
+        discovered: set[str] = set()
+        if shutil.which("iw"):
+            result = self._run_quiet_command(["iw", "dev"])
+            for line in result.splitlines():
+                match = re.match(r"\s*Interface\s+(\S+)", line)
+                if match:
+                    discovered.add(match.group(1))
 
-        return self._scan_session
+        sys_class_net = Path("/sys/class/net")
+        if sys_class_net.is_dir():
+            for candidate in sys_class_net.iterdir():
+                if (candidate / "wireless").exists():
+                    discovered.add(candidate.name)
 
-    def start_monitor_mode(self, interface: str, on_output: OutputCallback | None = None) -> str:
-        """Enables monitor mode on a wireless interface.
+        if not discovered and shutil.which("airmon-ng"):
+            result = self._run_quiet_command(["airmon-ng"])
+            for line in result.splitlines():
+                fields = line.split()
+                if len(fields) >= 2 and fields[0].lower() != "phy":
+                    candidate = fields[1]
+                    if INTERFACE_PATTERN.fullmatch(candidate):
+                        discovered.add(candidate)
 
-        Args:
-            interface: Wireless interface name, such as `wlan0`.
-            on_output: Optional callback for streaming output messages.
+        return sorted(discovered)
 
-        Returns:
-            str: The resulting monitor-mode interface.
+    def run_preflight(
+        self,
+        interface: str,
+        output_root: Path,
+        request_monitor_mode: bool,
+    ) -> PreflightReport:
+        """Checks whether the requested passive scan can start."""
 
-        Raises:
-            BackendError: If the operation cannot be completed.
-        """
+        checks: list[PreflightCheck] = []
+        try:
+            normalized_interface = self._validated_interface(interface)
+            checks.append(PreflightCheck("Interface name", True, normalized_interface))
+        except BackendError as exc:
+            checks.append(PreflightCheck("Interface name", False, str(exc)))
+            normalized_interface = ""
+
+        try:
+            resolved_output = self._prepare_output_root(output_root)
+            checks.append(PreflightCheck("Capture directory", True, str(resolved_output)))
+        except BackendError as exc:
+            checks.append(PreflightCheck("Capture directory", False, str(exc)))
+
+        if self.environment.mock_mode:
+            checks.append(
+                PreflightCheck(
+                    "Runtime mode",
+                    True,
+                    "Mock mode uses synthetic data and does not access wireless hardware.",
+                )
+            )
+            return PreflightReport(tuple(checks))
+
+        for tool in ("airodump-ng", "airmon-ng", "ip"):
+            path = shutil.which(tool)
+            checks.append(
+                PreflightCheck(
+                    f"Tool: {tool}",
+                    path is not None,
+                    path or "Not found in PATH",
+                )
+            )
+
+        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+        checks.append(
+            PreflightCheck(
+                "Privileges",
+                is_root,
+                "Running as root" if is_root else "Start with sudo for monitor-mode operations",
+            )
+        )
+
+        interfaces = self.discover_interfaces()
+        interface_present = bool(normalized_interface and normalized_interface in interfaces)
+        checks.append(
+            PreflightCheck(
+                "Wireless interface",
+                interface_present,
+                (
+                    f"{normalized_interface} detected"
+                    if interface_present
+                    else f"Detected interfaces: {', '.join(interfaces) or 'none'}"
+                ),
+            )
+        )
+
+        if not request_monitor_mode and normalized_interface:
+            checks.append(
+                PreflightCheck(
+                    "Monitor mode",
+                    normalized_interface.endswith("mon"),
+                    (
+                        "Existing monitor interface selected"
+                        if normalized_interface.endswith("mon")
+                        else "Select Monitor mode unless this interface is already in monitor mode"
+                    ),
+                    required=False,
+                )
+            )
+
+        return PreflightReport(tuple(checks))
+
+    def start_monitor_mode(
+        self,
+        interface: str,
+        on_output: OutputCallback | None = None,
+    ) -> str:
+        """Enables monitor mode on a wireless interface."""
 
         normalized_interface = self._validated_interface(interface)
+        if normalized_interface.endswith("mon"):
+            self._base_interface = normalized_interface
+            self._monitor_interface = normalized_interface
+            self._monitor_started_by_app = False
+            self._emit(on_output, f"Using existing monitor interface {normalized_interface}.")
+            return normalized_interface
 
         if self.environment.mock_mode:
             self._base_interface = normalized_interface
             self._monitor_interface = f"{normalized_interface}_mockmon"
+            self._monitor_started_by_app = True
             self._emit(on_output, "Mock mode enabled: no hardware changes were made.")
-            self._emit(
-                on_output,
-                f"Synthetic monitor interface ready on {self._monitor_interface}.",
-            )
             return self._monitor_interface
 
         self._require_tool("airmon-ng")
@@ -169,7 +276,11 @@ class WirelessAuditService:
         )
 
         self._base_interface = normalized_interface
-        self._monitor_interface = self._extract_monitor_interface(output_lines, normalized_interface)
+        self._monitor_interface = self._extract_monitor_interface(
+            output_lines,
+            normalized_interface,
+        )
+        self._monitor_started_by_app = True
         self._emit(on_output, f"Monitor mode active on {self._monitor_interface}.")
         return self._monitor_interface
 
@@ -179,43 +290,34 @@ class WirelessAuditService:
         output_root: Path,
         on_output: OutputCallback | None = None,
     ) -> ScanSession:
-        """Starts a passive target scan using `airodump-ng`.
-
-        Args:
-            interface: Monitor-mode interface to use for scanning.
-            output_root: Directory where capture output should be stored.
-            on_output: Optional callback for streaming console output.
-
-        Returns:
-            ScanSession: Metadata describing the created scan session.
-
-        Raises:
-            BackendError: If the scan cannot be started.
-        """
+        """Starts a passive network scan using ``airodump-ng``."""
 
         normalized_interface = self._validated_interface(interface)
-        if not self.environment.mock_mode and self.scan_active:
-            raise BackendError("A target scan is already active.")
+        if self.scan_active:
+            raise BackendError("A passive scan is already active.")
 
-        output_root.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_dir = output_root / f"scan_{timestamp}"
-        session_dir.mkdir(parents=True, exist_ok=True)
+        resolved_output = self._prepare_output_root(output_root)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        session_dir = resolved_output / f"scan_{timestamp}"
+        try:
+            session_dir.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            raise BackendError(f"Unable to create scan directory: {exc}") from exc
+
         output_prefix = session_dir / "autosentinel"
         csv_path = session_dir / "autosentinel-01.csv"
-
         self._base_interface = self._base_interface or normalized_interface
         self._monitor_interface = normalized_interface
         self._scan_session = ScanSession(
-            base_interface=self._base_interface,
             monitor_interface=normalized_interface,
-            output_prefix=output_prefix,
             csv_path=csv_path,
-            started_at=datetime.now(timezone.utc),
         )
+        self._expected_scan_stop = False
 
         if self.environment.mock_mode:
-            self._emit(on_output, "Mock scan started. Streaming synthetic wireless inventory.")
+            self._mock_scan_active = True
+            self._write_mock_csv(self._mock_data.snapshot(), csv_path)
+            self._emit(on_output, "Mock scan started. Synthetic results are saved as CSV.")
             return self._scan_session
 
         self._require_tool("airodump-ng")
@@ -236,19 +338,16 @@ class WirelessAuditService:
         return self._scan_session
 
     def stop_target_scan(self, on_output: OutputCallback | None = None) -> bool:
-        """Stops an active passive scan, if one exists.
-
-        Args:
-            on_output: Optional callback for streaming console output.
-
-        Returns:
-            bool: True when a running scan was stopped.
-        """
+        """Stops an active passive scan, if one exists."""
 
         if self.environment.mock_mode:
-            self._emit(on_output, "Mock scan stopped.")
-            return False
+            was_active = self._mock_scan_active
+            self._mock_scan_active = False
+            if was_active:
+                self._emit(on_output, "Mock scan stopped.")
+            return was_active
 
+        self._expected_scan_stop = True
         with self._process_lock:
             process = self._scan_process
             self._scan_process = None
@@ -262,27 +361,30 @@ class WirelessAuditService:
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self._emit(on_output, "Scan process did not exit cleanly; forcing termination.")
+                self._emit(on_output, "Scan process did not exit; forcing termination.")
                 process.kill()
                 process.wait(timeout=3)
-
         return True
 
     def restore_managed_mode(self, on_output: OutputCallback | None = None) -> None:
-        """Restores the interface to managed mode on exit."""
+        """Restores an interface changed to monitor mode by this application."""
 
         if self.environment.mock_mode:
-            self._emit(on_output, "Cleanup complete in mock mode.")
+            self._monitor_interface = ""
+            self._monitor_started_by_app = False
             return
 
-        if not self._monitor_interface:
+        if not self._monitor_interface or not self._monitor_started_by_app:
             return
 
         self._emit(on_output, f"Restoring managed mode from {self._monitor_interface}...")
         try:
             self._best_effort_command(["airmon-ng", "stop", self._monitor_interface], on_output)
             if self._base_interface:
-                self._best_effort_command(["ip", "link", "set", self._base_interface, "up"], on_output)
+                self._best_effort_command(
+                    ["ip", "link", "set", self._base_interface, "up"],
+                    on_output,
+                )
                 if shutil.which("iwconfig"):
                     self._best_effort_command(
                         ["iwconfig", self._base_interface, "mode", "managed"],
@@ -290,132 +392,110 @@ class WirelessAuditService:
                     )
         finally:
             self._monitor_interface = ""
-            self._emit(on_output, "Managed mode cleanup completed.")
+            self._monitor_started_by_app = False
+            self._emit(on_output, "Managed mode restoration completed.")
 
     def read_live_records(self) -> list[NetworkRecord]:
         """Returns the latest available scan records."""
 
-        if self.environment.mock_mode:
-            return self._mock_data.snapshot()
-
         if not self._scan_session:
             return []
 
+        if self.environment.mock_mode:
+            if not self._mock_scan_active:
+                return self._parser.parse_access_points(self._scan_session.csv_path)
+            records = self._mock_data.snapshot()
+            self._write_mock_csv(records, self._scan_session.csv_path)
+            return records
+
+        process = self._scan_process
+        if process is not None:
+            return_code = process.poll()
+            if return_code is not None and not self._expected_scan_stop:
+                raise BackendError(
+                    f"airodump-ng exited unexpectedly with status {return_code}."
+                )
+
         return self._parser.parse_access_points(self._scan_session.csv_path)
 
+    def load_capture(self, csv_path: Path) -> list[NetworkRecord]:
+        """Loads access-point records from an airodump-ng CSV capture."""
+
+        resolved_path = csv_path.expanduser().resolve()
+        if not self._parser.supports(resolved_path):
+            raise BackendError("Select an existing .csv capture file.")
+
+        records = self._parser.parse_access_points(resolved_path)
+        if not records:
+            raise BackendError(
+                "No access-point records were found. Ensure this is an airodump-ng CSV file."
+            )
+        return records
+
     def analyze_results(self, records: Sequence[NetworkRecord]) -> str:
-        """Produces a concise analytical summary of discovered networks.
-
-        Args:
-            records: Collected network records.
-
-        Returns:
-            str: Human-readable analysis text.
-        """
+        """Produces a concise analytical summary of discovered networks."""
 
         if not records:
             return "No scan results are available yet."
 
-        frame = pd.DataFrame([asdict(record) for record in records])
-        frame["channel"] = frame["channel"].astype(str)
-        frame["encryption"] = frame["encryption"].replace("", "Unknown")
-
-        strongest_index = frame["signal_dbm"].astype(int).idxmax()
-        strongest = frame.loc[strongest_index]
-        busy_channels = frame["channel"].value_counts().head(3)
-        security_mix = frame["encryption"].value_counts().head(4)
+        strongest = max(records, key=lambda record: record.signal_dbm)
+        busy_channels = Counter(str(record.channel) for record in records).most_common(3)
+        security_mix = Counter(
+            record.encryption or "Unknown" for record in records
+        ).most_common(4)
+        open_count = sum(
+            (record.encryption or "Unknown").lower() == "open" for record in records
+        )
 
         lines = [
-            f"Networks discovered: {len(frame)}",
+            f"Networks discovered: {len(records)}",
+            f"Open networks: {open_count}",
             (
                 "Strongest signal: "
-                f"{strongest['ssid']} ({strongest['bssid']}) on channel {strongest['channel']} "
-                f"at {strongest['signal_dbm']} dBm"
+                f"{strongest.ssid} ({strongest.bssid}) on channel "
+                f"{strongest.channel} at {strongest.signal_dbm} dBm"
             ),
-            "Busiest channels: " + ", ".join(
-                f"ch {channel} ({count})" for channel, count in busy_channels.items()
+            "Busiest channels: "
+            + ", ".join(
+                f"ch {channel} ({count})"
+                for channel, count in busy_channels
             ),
-            "Security mix: " + ", ".join(
-                f"{encryption} ({count})" for encryption, count in security_mix.items()
+            "Security mix: "
+            + ", ".join(
+                f"{encryption} ({count})"
+                for encryption, count in security_mix
             ),
         ]
         return "\n".join(lines)
 
-    def capture_handshake(
+    def export_report(
         self,
-        interface: str,
-        target_bssid: str | None = None,
-        on_output: OutputCallback | None = None,
-    ) -> str:
-        """Runs a safe, threaded handshake-capture flow.
+        records: Sequence[NetworkRecord],
+        destination: Path,
+    ) -> Path:
+        """Exports the current passive analysis as a JSON report."""
 
-        In mock mode this emits simulated success text. In hardware mode this
-        intentionally stays non-automated and returns a guarded notice.
-        """
+        if not records:
+            raise BackendError("There are no scan results to export.")
 
-        normalized_interface = self._validated_interface(interface)
-        target = target_bssid.strip().upper() if target_bssid else "unspecified target"
-
-        if self.environment.mock_mode:
-            message = (
-                "Mock mode: simulated handshake capture started on "
-                f"{normalized_interface} for {target}."
+        resolved = destination.expanduser().resolve()
+        if resolved.suffix.lower() != ".json":
+            resolved = resolved.with_suffix(".json")
+        try:
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "application": "Auto-Sentinel",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "summary": self.analyze_results(records),
+                "networks": [asdict(record) for record in records],
+            }
+            resolved.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=True),
+                encoding="utf-8",
             )
-            self._emit(on_output, message)
-            return message
-
-        message = (
-            "Handshake capture automation is intentionally guarded in this build. "
-            f"Requested interface={normalized_interface}, target={target}."
-        )
-        self._logger.warning(message)
-        self._emit(on_output, message)
-        return message
-
-    def authorize_deauthentication(
-        self,
-        interface: str,
-        target_bssid: str | None,
-        packet_count: int,
-        on_output: OutputCallback | None = None,
-    ) -> str:
-        """Runs a safe deauth-authorization workflow with validation."""
-
-        normalized_interface = self._validated_interface(interface)
-        if not target_bssid:
-            raise BackendError("Target BSSID is required before authorizing deauthentication.")
-        if packet_count <= 0:
-            raise BackendError("Deauth packet count must be a positive integer.")
-
-        target = target_bssid.strip().upper()
-        if self.environment.mock_mode:
-            message = (
-                "Mock mode: deauthentication authorization simulated for "
-                f"{target} on {normalized_interface} with {packet_count} packets."
-            )
-            self._emit(on_output, message)
-            return message
-
-        message = (
-            "Deauthentication execution is intentionally non-automated in this build. "
-            f"Authorization request logged for target={target}, packets={packet_count}, "
-            f"interface={normalized_interface}."
-        )
-        self._logger.warning(message)
-        self._emit(on_output, message)
-        return message
-
-    def deauth_capture_handshake(self, target_bssid: str | None = None) -> str:
-        """Returns a guardrail message for intentionally omitted active attack flows."""
-
-        target_clause = f" for {target_bssid}" if target_bssid else ""
-        message = (
-            "Active deauthentication or handshake-capture automation"
-            f"{target_clause} is intentionally not implemented in this build. "
-            "Passive discovery, analysis, logging, threading, and mock mode remain available."
-        )
-        self._logger.warning(message)
-        return message
+        except OSError as exc:
+            raise BackendError(f"Unable to write report: {exc}") from exc
+        return resolved
 
     def _validated_interface(self, interface: str) -> str:
         """Normalizes and validates a wireless interface name."""
@@ -423,7 +503,25 @@ class WirelessAuditService:
         normalized = interface.strip()
         if not normalized:
             raise BackendError("A wireless interface name is required.")
+        if not INTERFACE_PATTERN.fullmatch(normalized):
+            raise BackendError(
+                "Interface names may contain letters, numbers, dots, colons, dashes, "
+                "and underscores only."
+            )
         return normalized
+
+    def _prepare_output_root(self, output_root: Path) -> Path:
+        """Creates and verifies a writable capture directory."""
+
+        try:
+            resolved = output_root.expanduser().resolve()
+            resolved.mkdir(parents=True, exist_ok=True)
+            probe = resolved / ".autosentinel-write-test"
+            probe.write_text("ok", encoding="ascii")
+            probe.unlink()
+            return resolved
+        except OSError as exc:
+            raise BackendError(f"Capture directory is not writable: {exc}") from exc
 
     def _require_tool(self, tool_name: str) -> None:
         """Ensures a required command-line dependency exists."""
@@ -431,44 +529,55 @@ class WirelessAuditService:
         if shutil.which(tool_name):
             return
         raise BackendError(
-            f"Required tool '{tool_name}' was not found in PATH. Install aircrack-ng tooling first."
+            f"Required tool '{tool_name}' was not found in PATH. "
+            "Install aircrack-ng tooling first."
         )
+
+    def _run_quiet_command(self, command: Sequence[str]) -> str:
+        """Runs a short discovery command without raising on failure."""
+
+        try:
+            result = subprocess.run(
+                list(command),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout
 
     def _run_blocking_command(
         self,
         command: Sequence[str],
         on_output: OutputCallback | None = None,
     ) -> list[str]:
-        """Runs a blocking command and streams combined stdout/stderr."""
+        """Runs a bounded command and forwards its combined output."""
 
         self._logger.info("Executing command: %s", " ".join(command))
         try:
-            process = subprocess.Popen(
+            result = subprocess.run(
                 list(command),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                check=False,
+                capture_output=True,
                 text=True,
-                bufsize=1,
+                timeout=15,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise BackendError(f"Command timed out: {' '.join(command)}") from exc
         except OSError as exc:
             raise BackendError(f"Unable to launch command {' '.join(command)}: {exc}") from exc
 
-        output_lines: list[str] = []
-        if process.stdout is None:
-            raise BackendError(f"Command produced no stdout stream: {' '.join(command)}")
-
-        for raw_line in process.stdout:
-            line = raw_line.rstrip()
-            if not line:
-                continue
-            output_lines.append(line)
+        combined = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        output_lines = [line.strip() for line in combined.splitlines() if line.strip()]
+        for line in output_lines:
             self._emit(on_output, line)
-            self._logger.info(line)
 
-        return_code = process.wait()
-        if return_code != 0:
-            raise BackendError(f"Command failed with exit code {return_code}: {' '.join(command)}")
-
+        if result.returncode != 0:
+            raise BackendError(
+                f"Command failed with exit code {result.returncode}: {' '.join(command)}"
+            )
         return output_lines
 
     def _start_streaming_subprocess(
@@ -507,15 +616,16 @@ class WirelessAuditService:
 
         if process.stdout is None:
             return
-
         for raw_line in process.stdout:
             line = raw_line.rstrip()
-            if not line:
-                continue
-            self._emit(on_output, line)
-            self._logger.info(line)
+            if line:
+                self._emit(on_output, line)
 
-    def _extract_monitor_interface(self, output_lines: Sequence[str], fallback: str) -> str:
+    def _extract_monitor_interface(
+        self,
+        output_lines: Sequence[str],
+        fallback: str,
+    ) -> str:
         """Best-effort parser for monitor-mode interface names."""
 
         patterns = [
@@ -523,16 +633,12 @@ class WirelessAuditService:
             re.compile(r"monitor mode .* on (\S+)$", re.IGNORECASE),
             re.compile(r"enabled on (\S+)$", re.IGNORECASE),
         ]
-
         for line in output_lines:
             for pattern in patterns:
                 match = pattern.search(line)
                 if match:
-                    return match.group(1)
-
-        if fallback.endswith("mon"):
-            return fallback
-        return f"{fallback}mon"
+                    return match.group(1).rstrip(")")
+        return fallback if fallback.endswith("mon") else f"{fallback}mon"
 
     def _best_effort_command(
         self,
@@ -547,8 +653,83 @@ class WirelessAuditService:
             self._logger.warning("Cleanup command failed: %s", exc)
             self._emit(on_output, f"Cleanup warning: {exc}")
 
-    def _emit(self, on_output: OutputCallback | None, message: str) -> None:
-        """Safely emits output to both the callback and logger."""
+    def _write_mock_csv(
+        self,
+        records: Sequence[NetworkRecord],
+        csv_path: Path,
+    ) -> None:
+        """Writes mock records in the airodump-ng CSV shape."""
 
+        header = [
+            "BSSID",
+            "First time seen",
+            "Last time seen",
+            "channel",
+            "Speed",
+            "Privacy",
+            "Cipher",
+            "Authentication",
+            "Power",
+            "# beacons",
+            "# IV",
+            "LAN IP",
+            "ID-length",
+            "ESSID",
+            "Key",
+        ]
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with csv_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(header)
+                for record in records:
+                    privacy, cipher, authentication = self._encryption_parts(record)
+                    writer.writerow(
+                        [
+                            record.bssid,
+                            now,
+                            now,
+                            record.channel,
+                            "54",
+                            privacy,
+                            cipher,
+                            authentication,
+                            record.signal_dbm,
+                            "1",
+                            "0",
+                            "0.0.0.0",
+                            len(record.ssid),
+                            "" if record.ssid == "<hidden>" else record.ssid,
+                            "",
+                        ]
+                    )
+                writer.writerow([])
+                writer.writerow(
+                    [
+                        "Station MAC",
+                        "First time seen",
+                        "Last time seen",
+                        "Power",
+                        "# packets",
+                        "BSSID",
+                        "Probed ESSIDs",
+                    ]
+                )
+        except OSError as exc:
+            raise BackendError(f"Unable to write mock capture: {exc}") from exc
+
+    def _encryption_parts(self, record: NetworkRecord) -> tuple[str, str, str]:
+        """Returns airodump-style security columns for a mock record."""
+
+        if record.encryption.lower() == "open":
+            return ("OPN", "", "")
+        parts = [part.strip() for part in record.encryption.split("/")]
+        padded = parts + ["", "", ""]
+        return (padded[0], padded[1], padded[2])
+
+    def _emit(self, on_output: OutputCallback | None, message: str) -> None:
+        """Emits output to the callback and application log."""
+
+        self._logger.info(message)
         if on_output:
             on_output(message)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 
@@ -13,15 +12,11 @@ class RuntimeEnvironment:
 
     Attributes:
         platform_name: Human readable platform identifier.
-        is_linux: Whether the runtime is Linux.
-        is_macos: Whether the runtime is macOS.
         mock_mode: Whether hardware operations should be simulated.
         supported: Whether the platform is fully supported for hardware access.
     """
 
     platform_name: str
-    is_linux: bool
-    is_macos: bool
     mock_mode: bool
     supported: bool
 
@@ -56,8 +51,38 @@ class NetworkRecord:
 class ScanSession:
     """Tracks metadata for an active or recent scan session."""
 
-    base_interface: str
     monitor_interface: str
-    output_prefix: Path
     csv_path: Path
-    started_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PreflightCheck:
+    """Represents one runtime readiness check."""
+
+    name: str
+    passed: bool
+    detail: str
+    required: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class PreflightReport:
+    """Aggregates runtime readiness checks for a scan request."""
+
+    checks: tuple[PreflightCheck, ...]
+
+    @property
+    def ready(self) -> bool:
+        """Returns whether all required checks passed."""
+
+        return all(check.passed or not check.required for check in self.checks)
+
+    def as_text(self) -> str:
+        """Formats the report for console and GUI display."""
+
+        heading = "Preflight ready" if self.ready else "Preflight blocked"
+        lines = [heading]
+        for check in self.checks:
+            marker = "PASS" if check.passed else ("WARN" if not check.required else "FAIL")
+            lines.append(f"[{marker}] {check.name}: {check.detail}")
+        return "\n".join(lines)

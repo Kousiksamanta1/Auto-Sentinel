@@ -20,8 +20,6 @@ def detect_environment() -> RuntimeEnvironment:
     if normalized == "linux":
         return RuntimeEnvironment(
             platform_name="Linux",
-            is_linux=True,
-            is_macos=False,
             mock_mode=False,
             supported=True,
         )
@@ -29,16 +27,12 @@ def detect_environment() -> RuntimeEnvironment:
     if normalized == "darwin":
         return RuntimeEnvironment(
             platform_name="macOS",
-            is_linux=False,
-            is_macos=True,
             mock_mode=True,
             supported=True,
         )
 
     return RuntimeEnvironment(
         platform_name=system_name or "Unknown",
-        is_linux=False,
-        is_macos=False,
         mock_mode=True,
         supported=False,
     )

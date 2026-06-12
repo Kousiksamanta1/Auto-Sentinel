@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
+from pathlib import Path
 
-from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QCloseEvent, QIntValidator
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QCloseEvent, QColor, QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QComboBox,
+    QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
     QGridLayout,
@@ -48,17 +49,11 @@ class AutoSentinelWindow(QMainWindow):
         self._entry_animation: QPropertyAnimation | None = None
         self._status_pulse_timer = QTimer(self)
         self._metrics: dict[str, QLabel] = {}
+        self._has_results = False
+        self._busy = False
         self._build_ui()
         self._setup_status_pulse()
         self._setup_entry_animation()
-
-    @property
-    def app(self) -> QApplication:
-        """Returns the active QApplication instance."""
-
-        app = QApplication.instance()
-        assert app is not None
-        return app
 
     def current_interface(self) -> str:
         """Returns the selected interface string."""
@@ -73,32 +68,70 @@ class AutoSentinelWindow(QMainWindow):
     def current_output_dir(self) -> str:
         """Returns the configured output directory."""
 
-        return "captures"
+        return self.output_dir_input.text().strip()
 
-    def target_bssid_input_value(self) -> str | None:
-        """Returns the target BSSID entered by the user, if any."""
+    def selected_capture_path(self) -> str:
+        """Returns the selected CSV capture path."""
 
-        value = self.target_bssid_input.text().strip()
-        return value or None
+        return self.capture_path_input.text().strip()
 
-    def deauth_packet_count(self) -> int:
-        """Returns a validated deauth packet count from the input."""
+    def choose_output_directory(self) -> str | None:
+        """Prompts for and stores a capture output directory."""
 
-        raw_value = self.deauth_count_input.text().strip()
-        try:
-            parsed = int(raw_value)
-        except ValueError:
-            return 0
-        return max(parsed, 0)
-
-    def selected_bssid(self) -> str | None:
-        """Returns the selected BSSID from the dashboard, if any."""
-
-        row = self.network_table.currentRow()
-        if row < 0:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Select Capture Directory",
+            self.current_output_dir() or "captures",
+        )
+        if not selected:
             return None
-        item = self.network_table.item(row, 1)
-        return item.text() if item else None
+        self.output_dir_input.setText(selected)
+        return selected
+
+    def choose_capture_file(self) -> str | None:
+        """Prompts for and stores an airodump-ng CSV capture."""
+
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Airodump CSV",
+            self.current_output_dir() or "captures",
+            "CSV captures (*.csv);;All files (*)",
+        )
+        if not selected:
+            return None
+        self.capture_path_input.setText(selected)
+        return selected
+
+    def choose_report_destination(self) -> str | None:
+        """Prompts for a JSON report destination."""
+
+        selected, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Audit Report",
+            "auto-sentinel-report.json",
+            "JSON reports (*.json)",
+        )
+        return selected or None
+
+    def open_output_directory(self) -> bool:
+        """Opens the configured capture directory in the system file manager."""
+
+        output_dir = Path(self.current_output_dir() or "captures").expanduser().resolve()
+        return QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_dir)))
+
+    def set_interfaces(self, interfaces: Sequence[str]) -> None:
+        """Replaces interface choices while preserving the current value."""
+
+        current = self.current_interface()
+        self.interface_combo.clear()
+        self.interface_combo.addItems(list(interfaces))
+        if current in interfaces:
+            self.interface_combo.setCurrentText(current)
+
+    def set_capture_path(self, path: str) -> None:
+        """Updates the displayed capture source."""
+
+        self.capture_path_input.setText(path)
 
     def set_environment(self, description: str) -> None:
         """Updates the environment chip."""
@@ -137,9 +170,37 @@ class AutoSentinelWindow(QMainWindow):
         self.start_scan_button.setDisabled(False)
         self.start_scan_button.setText("Stop Network Scan" if running else "Start Network Scan")
 
+    def set_controls_state(self, scanning: bool, busy: bool) -> None:
+        """Coordinates controls that should not overlap with scan operations."""
+
+        self._busy = busy
+        configuration_enabled = not scanning and not busy
+        for widget in (
+            self.interface_combo,
+            self.monitor_mode_combo,
+            self.output_dir_input,
+            self.refresh_interfaces_button,
+            self.preflight_button,
+            self.browse_output_button,
+        ):
+            widget.setEnabled(configuration_enabled)
+
+        import_enabled = not scanning and not busy
+        for widget in (
+            self.capture_path_input,
+            self.load_capture_button,
+            self.open_output_button,
+        ):
+            widget.setEnabled(import_enabled)
+
+        self.open_output_button.setEnabled(not busy)
+        self.analyze_results_button.setEnabled(not busy and self._has_results)
+        self.export_report_button.setEnabled(not busy and self._has_results)
+
     def update_scan_results(self, records: Sequence[NetworkRecord]) -> None:
         """Renders live scan results into the dashboard table."""
 
+        self._has_results = bool(records)
         self.network_table.setRowCount(len(records))
         for row_index, record in enumerate(records):
             for column_index, cell_value in enumerate(record.as_table_row()):
@@ -156,6 +217,8 @@ class AutoSentinelWindow(QMainWindow):
         if records:
             self.network_table.resizeRowsToContents()
         self._update_metrics(records)
+        self.analyze_results_button.setEnabled(self._has_results and not self._busy)
+        self.export_report_button.setEnabled(self._has_results and not self._busy)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Emits a closing signal before the window exits."""
@@ -306,7 +369,7 @@ class AutoSentinelWindow(QMainWindow):
         controls_layout.setContentsMargins(14, 16, 14, 14)
         controls_layout.setSpacing(11)
 
-        intro = QLabel("Configure interface and run authorized audit workflows.")
+        intro = QLabel("Configure a sensor and run passive, authorized audit workflows.")
         intro.setObjectName("ActionHint")
 
         config_label = QLabel("Interface Configuration")
@@ -316,11 +379,20 @@ class AutoSentinelWindow(QMainWindow):
         mode_label = QLabel("Monitor Mode State")
         mode_label.setObjectName("MutedLabel")
         self.interface_combo = QComboBox()
-        self.interface_combo.addItems(["wlan0", "wlan1", "wlan0mon"])
-        self.interface_combo.setEditable(False)
+        self.interface_combo.addItems(["wlan0", "wlan1"])
+        self.interface_combo.setEditable(True)
         self.monitor_mode_combo = QComboBox()
-        self.monitor_mode_combo.addItems(["Managed", "Monitor"])
+        self.monitor_mode_combo.addItems(["Monitor", "Managed"])
         self.monitor_mode_combo.setEditable(False)
+        self.refresh_interfaces_button = QPushButton("Refresh Interfaces")
+        self.refresh_interfaces_button.setObjectName("SecondaryButton")
+
+        output_label = QLabel("Capture Directory")
+        output_label.setObjectName("MutedLabel")
+        self.output_dir_input = QLineEdit("captures")
+        self.output_dir_input.setPlaceholderText("captures")
+        self.browse_output_button = QPushButton("Browse Capture Directory")
+        self.browse_output_button.setObjectName("SecondaryButton")
 
         config_card = QFrame()
         config_card.setObjectName("ConfigCard")
@@ -331,15 +403,21 @@ class AutoSentinelWindow(QMainWindow):
         config_layout.addWidget(self.interface_combo)
         config_layout.addWidget(mode_label)
         config_layout.addWidget(self.monitor_mode_combo)
+        config_layout.addWidget(self.refresh_interfaces_button)
+        config_layout.addWidget(output_label)
+        config_layout.addWidget(self.output_dir_input)
+        config_layout.addWidget(self.browse_output_button)
 
         ops_label = QLabel("Operations")
         ops_label.setObjectName("SectionLabel")
+        self.preflight_button = QPushButton("Run Preflight Checks")
+        self.preflight_button.setObjectName("SecondaryButton")
         self.start_scan_button = QPushButton("Start Network Scan")
         self.start_scan_button.setObjectName("PrimaryButton")
-        self.capture_handshake_button = QPushButton("Capture Handshake")
-        self.capture_handshake_button.setObjectName("CaptureButton")
-        self.parse_capture_button = QPushButton("Parse Capture")
-        self.parse_capture_button.setObjectName("AccentBlueButton")
+        self.analyze_results_button = QPushButton("Analyze Current Results")
+        self.analyze_results_button.setObjectName("AccentBlueButton")
+        self.export_report_button = QPushButton("Export JSON Report")
+        self.export_report_button.setObjectName("ExportButton")
 
         ops_card = QFrame()
         ops_card.setObjectName("OperationsCard")
@@ -347,42 +425,41 @@ class AutoSentinelWindow(QMainWindow):
         ops_layout.setContentsMargins(10, 10, 10, 10)
         ops_layout.setSpacing(9)
         for button in (
+            self.preflight_button,
             self.start_scan_button,
-            self.capture_handshake_button,
-            self.parse_capture_button,
+            self.analyze_results_button,
+            self.export_report_button,
         ):
             button.setMinimumHeight(48)
             ops_layout.addWidget(button)
 
-        deauth_label = QLabel("Deauthentication Authorization")
-        deauth_label.setObjectName("SectionLabel")
-        bssid_label = QLabel("Target BSSID")
-        bssid_label.setObjectName("MutedLabel")
-        packet_label = QLabel("Deauth Packets (count)")
-        packet_label.setObjectName("MutedLabel")
-        self.target_bssid_input = QLineEdit()
-        self.target_bssid_input.setPlaceholderText("AA:BB:CC:DD:EE:FF")
-        self.target_bssid_input.setClearButtonEnabled(True)
-        self.deauth_count_input = QLineEdit("10")
-        self.deauth_count_input.setPlaceholderText("10")
-        self.deauth_count_input.setValidator(QIntValidator(1, 99999, self))
-        self.deauth_count_input.setMaxLength(5)
-        self.authorize_deauth_button = QPushButton("Authorize Deauthentication")
-        self.authorize_deauth_button.setObjectName("DangerButton")
-        self.authorize_deauth_button.setMinimumHeight(48)
+        import_label = QLabel("Capture Analysis")
+        import_label.setObjectName("SectionLabel")
+        capture_path_label = QLabel("Airodump CSV File")
+        capture_path_label.setObjectName("MutedLabel")
+        self.capture_path_input = QLineEdit()
+        self.capture_path_input.setPlaceholderText("Select an existing airodump-ng CSV")
+        self.capture_path_input.setClearButtonEnabled(True)
+        self.load_capture_button = QPushButton("Load Capture CSV")
+        self.load_capture_button.setObjectName("SecondaryButton")
+        self.open_output_button = QPushButton("Open Capture Directory")
+        self.open_output_button.setObjectName("SecondaryButton")
 
-        deauth_card = QFrame()
-        deauth_card.setObjectName("DeauthCard")
-        deauth_layout = QVBoxLayout(deauth_card)
-        deauth_layout.setContentsMargins(10, 10, 10, 10)
-        deauth_layout.setSpacing(8)
-        deauth_layout.addWidget(bssid_label)
-        deauth_layout.addWidget(self.target_bssid_input)
-        deauth_layout.addWidget(packet_label)
-        deauth_layout.addWidget(self.deauth_count_input)
-        deauth_layout.addWidget(self.authorize_deauth_button)
+        import_card = QFrame()
+        import_card.setObjectName("ImportCard")
+        import_layout = QVBoxLayout(import_card)
+        import_layout.setContentsMargins(10, 10, 10, 10)
+        import_layout.setSpacing(8)
+        import_layout.addWidget(capture_path_label)
+        import_layout.addWidget(self.capture_path_input)
+        import_layout.addWidget(self.load_capture_button)
+        import_layout.addWidget(self.open_output_button)
 
-        guardrail_note = QLabel("Deauth workflow is guarded and intentionally non-automated.")
+        guardrail_note = QLabel(
+            "Passive scope only. Deauthentication and automated handshake attacks "
+            "are not provided."
+        )
+        guardrail_note.setWordWrap(True)
         guardrail_note.setObjectName("ActionHint")
 
         controls_layout.addWidget(intro)
@@ -390,8 +467,8 @@ class AutoSentinelWindow(QMainWindow):
         controls_layout.addWidget(config_card)
         controls_layout.addWidget(ops_label)
         controls_layout.addWidget(ops_card)
-        controls_layout.addWidget(deauth_label)
-        controls_layout.addWidget(deauth_card)
+        controls_layout.addWidget(import_label)
+        controls_layout.addWidget(import_card)
         controls_layout.addWidget(guardrail_note)
 
         analysis_box = QGroupBox("Analysis Snapshot")
@@ -537,7 +614,7 @@ class AutoSentinelWindow(QMainWindow):
         """Translates runtime status text into a mission-state label."""
 
         lowered = runtime_status.lower()
-        if "error" in lowered:
+        if "error" in lowered or "failed" in lowered:
             return "MISSION: Fault State"
         if "scan" in lowered:
             return "MISSION: Active Monitoring"
@@ -581,16 +658,16 @@ class AutoSentinelWindow(QMainWindow):
         """Returns a signal-strength color."""
 
         if signal_dbm >= -50:
-            return QColor("#7dffbf")
+            return QColor("#087f5b")
         if signal_dbm >= -67:
-            return QColor("#ffe492")
-        return QColor("#ffae8f")
+            return QColor("#9a5b00")
+        return QColor("#bd3d35")
 
     def _encryption_color(self, encryption: str) -> QColor:
         """Returns an encryption-aware color."""
 
         if "Open" in encryption:
-            return QColor("#ff9f7d")
+            return QColor("#b93831")
         if "WPA3" in encryption:
-            return QColor("#82f0ff")
-        return QColor("#9ef3c2")
+            return QColor("#176b82")
+        return QColor("#087f5b")

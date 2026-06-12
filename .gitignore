@@ -16,6 +16,7 @@ logs/
 captures/
 *.cap
 *.csv
+auto-sentinel-report*.json
 
 # IDE/editor settings
 .DS_Store

@@ -6,7 +6,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-
 APP_LOGGER_NAME = "auto_sentinel"
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 

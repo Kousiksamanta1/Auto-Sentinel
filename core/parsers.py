@@ -64,6 +64,11 @@ class AirodumpCsvParser:
 
         return sorted(discovered.values(), key=lambda item: item.signal_dbm, reverse=True)
 
+    def supports(self, csv_path: Path) -> bool:
+        """Returns whether the path is a supported capture format."""
+
+        return csv_path.is_file() and csv_path.suffix.lower() == ".csv"
+
     def _row_to_record(self, row: list[str]) -> NetworkRecord | None:
         """Converts a raw CSV row into a typed record."""
 
