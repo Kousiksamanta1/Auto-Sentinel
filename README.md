@@ -1,4 +1,13 @@
+<p align="center">
+  <img src="docs/social-preview.png" alt="Auto-Sentinel social preview" width="100%" />
+</p>
+
 # Auto-Sentinel
+
+[![CI](https://github.com/Kousiksamanta1/Auto-Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/Kousiksamanta1/Auto-Sentinel/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2cff88.svg)](LICENSE)
+[![Portfolio](https://img.shields.io/badge/Portfolio-Operator_Archive-66e3ff)](https://kousiksamanta1.github.io/PORTFOLIO/)
 
 Auto-Sentinel is a production-ready Python desktop application for **passive**
 wireless discovery and security analysis. It combines a PyQt6 dashboard with
@@ -240,6 +249,11 @@ bootstrap runs.
 Use Auto-Sentinel only on networks and systems you own or are explicitly
 authorized to assess. Passive collection can still expose sensitive network
 metadata; protect capture files and reports accordingly.
+
+## Contributing
+
+Focused bug reports, documentation improvements, and tested enhancements are
+welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## License
 
